@@ -1,0 +1,24 @@
+{
+  "name": "resumate-backend",
+  "version": "1.0.0",
+  "description": "Backend API for Resumate resume storage and PDF generation",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@clerk/backend": "^1.24.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "node-appwrite": "^15.0.1",
+    "puppeteer": "^24.9.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
