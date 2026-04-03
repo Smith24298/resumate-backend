@@ -4,9 +4,8 @@ import { ApiError } from "../utils/ApiError.js";
 import { generatePDF } from "../services/pdfService.js";
 
 const compileRouter = Router();
-const DEFAULT_LATEX_API_URL = "";
-const LATEX_API_URL = process.env.LATEX_API_URL || DEFAULT_LATEX_API_URL;
-const LATEX_API_TIMEOUT_MS = Number(process.env.LATEX_API_TIMEOUT_MS || 30000);
+const LATEX_API_URL = process.env.LATEX_API_URL;
+const LATEX_API_TIMEOUT_MS = Number(process.env.LATEX_API_TIMEOUT_MS);
 const USE_SELF_HOSTED_COMPILE_API =
   process.env.LATEX_API_MODE === "self-hosted" ||
   LATEX_API_URL.includes("/compile");
