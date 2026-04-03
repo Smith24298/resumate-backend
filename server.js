@@ -24,14 +24,38 @@ const {
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
-const frontendOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
+const allowedOrigins = Array.from(
+  new Set(
+    [
+      "http://localhost:5173",
+      "https://resumate-frontend-two.vercel.app",
+      process.env.FRONTEND_URL,
+      ...(process.env.FRONTEND_URLS || "").split(","),
+    ]
+      .map((origin) => String(origin || "").trim())
+      .filter(Boolean),
+  ),
+);
 
 app.use(helmet());
 app.use(cookieParser());
 app.use(express.json({ limit: "1mb" }));
 app.use(
   cors({
-    origin: frontendOrigin,
+    origin: (origin, callback) => {
+      // Allow requests with no Origin header (server-to-server, curl, health checks).
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: [
