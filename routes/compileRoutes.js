@@ -10,6 +10,36 @@ const USE_SELF_HOSTED_COMPILE_API =
   process.env.LATEX_API_MODE === "self-hosted" ||
   LATEX_API_URL.includes("/compile");
 
+function buildCompilerPayload(content, useSelfHostedShape) {
+  return useSelfHostedShape
+    ? { latex: content }
+    : { resources: [{ main: true, content }] };
+}
+
+function parseCompilerErrorMessage(errorText) {
+  try {
+    const parsed = JSON.parse(errorText);
+    const message =
+      parsed?.error ||
+      parsed?.message ||
+      parsed?.detail ||
+      parsed?.details ||
+      parsed?.stderr;
+
+    if (typeof message === "string" && message.trim()) {
+      return message.trim();
+    }
+  } catch {
+    // Not JSON, continue with plain-text fallback.
+  }
+
+  if (typeof errorText === "string" && errorText.trim()) {
+    return errorText.trim().slice(0, 500);
+  }
+
+  return "Failed to compile LaTeX. Please check your syntax.";
+}
+
 compileRouter.use(verifyAuth);
 
 /**
@@ -42,42 +72,58 @@ compileRouter.post("/", async (req, res, next) => {
 
     // Compile using external LaTeX API service
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(
-        () => controller.abort(),
-        LATEX_API_TIMEOUT_MS,
-      );
+      const callCompiler = async (payload) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(
+          () => controller.abort(),
+          LATEX_API_TIMEOUT_MS,
+        );
 
-      const compileResponse = await fetch(LATEX_API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          USE_SELF_HOSTED_COMPILE_API
-            ? { latex: content }
-            : { resources: [{ main: true, content }] },
-        ),
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timeoutId));
+        try {
+          return await fetch(LATEX_API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      };
+
+      const primaryPayload = buildCompilerPayload(content, USE_SELF_HOSTED_COMPILE_API);
+      const alternatePayload = buildCompilerPayload(content, !USE_SELF_HOSTED_COMPILE_API);
+      let compileResponse = await callCompiler(primaryPayload);
 
       console.log("Compile response status:", compileResponse.status);
 
       if (!compileResponse.ok) {
-        const errorText = await compileResponse.text();
+        let errorText = await compileResponse.text();
         console.error(
           "LaTeX compiler error:",
           compileResponse.status,
           errorText,
         );
 
-        // 4xx usually means user-provided LaTeX has syntax/package problems.
+        // Retry once with alternate payload format to handle API-mode misconfiguration.
         if (compileResponse.status >= 400 && compileResponse.status < 500) {
-          throw new ApiError(
-            422,
-            "Failed to compile LaTeX. Please check your syntax.",
-          );
-        }
+          const retryResponse = await callCompiler(alternatePayload);
+          if (retryResponse.ok) {
+            compileResponse = retryResponse;
+          } else {
+            const retryErrorText = await retryResponse.text();
+            console.error(
+              "LaTeX compiler retry error:",
+              retryResponse.status,
+              retryErrorText,
+            );
 
-        throw new Error(`LaTeX API unavailable (${compileResponse.status})`);
+            errorText = retryErrorText || errorText;
+            throw new ApiError(422, parseCompilerErrorMessage(errorText));
+          }
+        } else {
+          throw new Error(`LaTeX API unavailable (${compileResponse.status})`);
+        }
       }
 
       const contentType = compileResponse.headers.get("content-type") || "";
@@ -88,10 +134,7 @@ compileRouter.post("/", async (req, res, next) => {
           contentType,
           errorText,
         );
-        throw new ApiError(
-          422,
-          "Failed to compile LaTeX. Please check your syntax.",
-        );
+        throw new ApiError(422, parseCompilerErrorMessage(errorText));
       }
 
       const arrayBuffer = await compileResponse.arrayBuffer();
