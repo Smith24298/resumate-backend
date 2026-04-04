@@ -81,6 +81,19 @@ app.use("/api/resumes", resumeRouter);
 app.use("/api/generate-pdf", pdfRouter);
 app.use("/api/compile", compileRouter);
 
+try {
+  const { atsRouter } = await import("./ATS-Engine/router.js");
+  app.use("/api/ats", atsRouter);
+} catch (error) {
+  console.error("ATS-Engine disabled due to load failure:", error);
+  app.use("/api/ats", (_req, res) => {
+    res.status(503).json({
+      error: "ATS service unavailable.",
+      code: "ATS_ENGINE_DISABLED",
+    });
+  });
+}
+
 app.use(notFoundHandler);
 app.use(errorHandler);
 
