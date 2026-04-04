@@ -28,7 +28,7 @@ const allowedOrigins = Array.from(
   new Set(
     [
       "http://localhost:5173",
-      "https://resumate-frontend-two.vercel.app",
+      "https://resuUmate.vercel.app",
       process.env.FRONTEND_URL,
       ...(process.env.FRONTEND_URLS || "").split(","),
     ]
