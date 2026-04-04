@@ -28,6 +28,7 @@ const allowedOrigins = Array.from(
   new Set(
     [
       "http://localhost:5173",
+      "https://resuumate.vercel.app",
       "https://resuUmate.vercel.app",
       process.env.FRONTEND_URL,
       ...(process.env.FRONTEND_URLS || "").split(","),
@@ -35,6 +36,9 @@ const allowedOrigins = Array.from(
       .map((origin) => String(origin || "").trim())
       .filter(Boolean),
   ),
+);
+const normalizedAllowedOrigins = new Set(
+  allowedOrigins.map((origin) => origin.toLowerCase()),
 );
 
 app.use(helmet());
@@ -49,7 +53,8 @@ app.use(
         return;
       }
 
-      if (allowedOrigins.includes(origin)) {
+      const normalizedOrigin = String(origin).toLowerCase();
+      if (normalizedAllowedOrigins.has(normalizedOrigin)) {
         callback(null, true);
         return;
       }

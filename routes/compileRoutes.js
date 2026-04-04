@@ -107,8 +107,14 @@ compileRouter.post("/", async (req, res, next) => {
         }
       };
 
-      const primaryPayload = buildCompilerPayload(content, USE_SELF_HOSTED_COMPILE_API);
-      const alternatePayload = buildCompilerPayload(content, !USE_SELF_HOSTED_COMPILE_API);
+      const primaryPayload = buildCompilerPayload(
+        content,
+        USE_SELF_HOSTED_COMPILE_API,
+      );
+      const alternatePayload = buildCompilerPayload(
+        content,
+        !USE_SELF_HOSTED_COMPILE_API,
+      );
       const payloadCandidates = [primaryPayload, alternatePayload];
       const urlCandidates = buildCompilerUrls(LATEX_API_URL);
       let compileResponse = null;
@@ -145,7 +151,9 @@ compileRouter.post("/", async (req, res, next) => {
           throw new ApiError(422, parseCompilerErrorMessage(lastErrorText));
         }
 
-        throw new Error(`LaTeX API unavailable (${lastStatus || "no response"})`);
+        throw new Error(
+          `LaTeX API unavailable (${lastStatus || "no response"})`,
+        );
       }
 
       console.log("Compile response status:", compileResponse.status);
