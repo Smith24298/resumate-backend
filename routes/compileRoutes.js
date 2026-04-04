@@ -10,6 +10,22 @@ const USE_SELF_HOSTED_COMPILE_API =
   process.env.LATEX_API_MODE === "self-hosted" ||
   LATEX_API_URL.includes("/compile");
 
+function buildCompilerUrls(url) {
+  const base = String(url || "").trim();
+  const withoutTrailingSlash = base.replace(/\/+$/, "");
+
+  if (!withoutTrailingSlash) {
+    return [];
+  }
+
+  const urls = [withoutTrailingSlash];
+  if (!withoutTrailingSlash.endsWith("/compile")) {
+    urls.push(`${withoutTrailingSlash}/compile`);
+  }
+
+  return urls;
+}
+
 function buildCompilerPayload(content, useSelfHostedShape) {
   return useSelfHostedShape
     ? { latex: content }
@@ -72,7 +88,7 @@ compileRouter.post("/", async (req, res, next) => {
 
     // Compile using external LaTeX API service
     try {
-      const callCompiler = async (payload) => {
+      const callCompiler = async (url, payload) => {
         const controller = new AbortController();
         const timeoutId = setTimeout(
           () => controller.abort(),
@@ -80,7 +96,7 @@ compileRouter.post("/", async (req, res, next) => {
         );
 
         try {
-          return await fetch(LATEX_API_URL, {
+          return await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -93,38 +109,46 @@ compileRouter.post("/", async (req, res, next) => {
 
       const primaryPayload = buildCompilerPayload(content, USE_SELF_HOSTED_COMPILE_API);
       const alternatePayload = buildCompilerPayload(content, !USE_SELF_HOSTED_COMPILE_API);
-      let compileResponse = await callCompiler(primaryPayload);
+      const payloadCandidates = [primaryPayload, alternatePayload];
+      const urlCandidates = buildCompilerUrls(LATEX_API_URL);
+      let compileResponse = null;
+      let lastStatus = 0;
+      let lastErrorText = "";
 
-      console.log("Compile response status:", compileResponse.status);
+      for (const compilerUrl of urlCandidates) {
+        for (const payload of payloadCandidates) {
+          const candidateResponse = await callCompiler(compilerUrl, payload);
 
-      if (!compileResponse.ok) {
-        let errorText = await compileResponse.text();
-        console.error(
-          "LaTeX compiler error:",
-          compileResponse.status,
-          errorText,
-        );
-
-        // Retry once with alternate payload format to handle API-mode misconfiguration.
-        if (compileResponse.status >= 400 && compileResponse.status < 500) {
-          const retryResponse = await callCompiler(alternatePayload);
-          if (retryResponse.ok) {
-            compileResponse = retryResponse;
-          } else {
-            const retryErrorText = await retryResponse.text();
-            console.error(
-              "LaTeX compiler retry error:",
-              retryResponse.status,
-              retryErrorText,
-            );
-
-            errorText = retryErrorText || errorText;
-            throw new ApiError(422, parseCompilerErrorMessage(errorText));
+          if (candidateResponse.ok) {
+            compileResponse = candidateResponse;
+            break;
           }
-        } else {
-          throw new Error(`LaTeX API unavailable (${compileResponse.status})`);
+
+          const candidateErrorText = await candidateResponse.text();
+          console.error(
+            "LaTeX compiler error:",
+            candidateResponse.status,
+            compilerUrl,
+            candidateErrorText,
+          );
+          lastStatus = candidateResponse.status;
+          lastErrorText = candidateErrorText;
+        }
+
+        if (compileResponse) {
+          break;
         }
       }
+
+      if (!compileResponse) {
+        if (lastStatus >= 400 && lastStatus < 500) {
+          throw new ApiError(422, parseCompilerErrorMessage(lastErrorText));
+        }
+
+        throw new Error(`LaTeX API unavailable (${lastStatus || "no response"})`);
+      }
+
+      console.log("Compile response status:", compileResponse.status);
 
       const contentType = compileResponse.headers.get("content-type") || "";
       if (!contentType.includes("application/pdf")) {
